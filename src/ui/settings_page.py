@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeySequence, QShortcut
+import shutil
 
 from settings.store import SettingsStore
 from ui.widgets import path_picker, labeled_textarea, labeled_edit
@@ -30,6 +31,16 @@ class SettingsPage(QWidget):
         ("brave", "Brave"),
         ("vivaldi", "Vivaldi"),
         ("safari", "Safari"),
+    ]
+
+    REMOTE_COMPONENT_OPTIONS = [
+        ("ejs:github", "settings.option.remote_components.github"),
+        ("", "settings.option.remote_components.off"),
+    ]
+
+    PLAYER_CLIENT_OPTIONS = [
+        ("web", "settings.option.player_clients.web"),
+        ("web,android", "settings.option.player_clients.web_android"),
     ]
 
     LANGUAGE_OPTIONS = [
@@ -267,6 +278,11 @@ class SettingsPage(QWidget):
         self.verify_download.setToolTip(tr("settings.tooltip.verify_download"))
         layout.addWidget(self.verify_download)
 
+        # 최대 파일 크기 우선
+        self.prefer_largest_file = QCheckBox(tr("settings.option.prefer_largest_file"))
+        self.prefer_largest_file.setChecked(self.settings.prefer_largest_file)
+        layout.addWidget(self.prefer_largest_file)
+
         layout.addStretch(1)
         return self._wrap_scroll(page)
 
@@ -315,6 +331,36 @@ class SettingsPage(QWidget):
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setSpacing(12)
+
+        layout.addWidget(self._section_header(tr("settings.section.youtube")))
+
+        pc_row, self.yt_player_clients = self._combo_row(
+            tr("settings.label.yt_player_clients"),
+            [(v, tr(k)) for v, k in self.PLAYER_CLIENT_OPTIONS],
+            self.settings.yt_player_clients,
+        )
+        layout.addWidget(pc_row)
+
+        rc_row, self.yt_remote_components = self._combo_row(
+            tr("settings.label.yt_remote_components"),
+            [(v, tr(k)) for v, k in self.REMOTE_COMPONENT_OPTIONS],
+            self.settings.yt_remote_components,
+        )
+        layout.addWidget(rc_row)
+
+        token_row, self.yt_po_token = labeled_edit(tr("settings.label.yt_po_token"), "android.gvs+TOKEN")
+        self.yt_po_token.setText(self.settings.yt_po_token)
+        layout.addWidget(token_row)
+
+        token_help = QLabel(tr("settings.help.yt_po_token"))
+        token_help.setStyleSheet("color: #6b7280; font-size: 10px; padding: 2px 0;")
+        layout.addWidget(token_help)
+
+        self.deno_warn = QLabel(tr("settings.warning.deno_missing"))
+        self.deno_warn.setStyleSheet("color: #ffb703; font-size: 10px; padding: 2px 0;")
+        layout.addWidget(self.deno_warn)
+        self._update_deno_warning()
+        self.yt_remote_components.currentIndexChanged.connect(self._update_deno_warning)
 
         layout.addWidget(self._section_header(tr("settings.section.browser_cookies")))
 
@@ -402,6 +448,7 @@ class SettingsPage(QWidget):
         s.concurrent_fragments = self.fragments.value()
         s.retries = self.retries.value()
         s.verify_download = self.verify_download.isChecked()
+        s.prefer_largest_file = self.prefer_largest_file.isChecked()
 
         # 자막/메타
         s.write_subs = self.write_subs.isChecked()
@@ -418,6 +465,9 @@ class SettingsPage(QWidget):
         s.cookies_text = self.cookies_text.toPlainText().strip()
         s.cookies_file = SettingsStore.write_cookies_text(s.cookies_text)
         s.enable_age_restricted = self.enable_age_restricted.isChecked()
+        s.yt_remote_components = self.yt_remote_components.currentData()
+        s.yt_player_clients = self.yt_player_clients.currentData()
+        s.yt_po_token = self.yt_po_token.text().strip()
 
         # SponsorBlock
         s.sponsorblock_enable = self.sb_enable.isChecked()
@@ -431,3 +481,16 @@ class SettingsPage(QWidget):
                 window.close()
         if prev_language != s.language:
             i18n.notify_language_changed()
+
+    def _update_deno_warning(self):
+        enabled = bool(self.yt_remote_components.currentData())
+        has_deno = shutil.which("deno") is not None
+        if not has_deno:
+            import sys, os
+            if getattr(sys, "frozen", False):
+                base = getattr(sys, "_MEIPASS", "")
+                if base and os.path.exists(os.path.join(base, "deno.exe")):
+                    has_deno = True
+            if not has_deno and os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)), "deno.exe")):
+                has_deno = True
+        self.deno_warn.setVisible(enabled and not has_deno)

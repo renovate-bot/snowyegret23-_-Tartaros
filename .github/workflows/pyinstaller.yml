@@ -26,6 +26,13 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
+      - name: Download Deno
+        shell: pwsh
+        run: |
+          $url = "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip"
+          Invoke-WebRequest -Uri $url -OutFile deno.zip
+          Expand-Archive -Path deno.zip -DestinationPath deno
+
       - name: Build executable
         shell: bash
         run: |
@@ -33,13 +40,14 @@ jobs:
             --collect-all PySide6 \
             --collect-all yt_dlp \
             --collect-all requests \
+            --add-binary "deno/deno.exe;." \
             src/app.py
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: Tartaros-windows
-          path: dist/Tartaros/**
+          path: dist/Tartaros.exe
 
       - name: Read version
         id: version

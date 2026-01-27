@@ -1,6 +1,7 @@
 from PySide6.QtCore import QThread, Signal
 import traceback
 import os
+import sys
 
 class YtdlpRunner(QThread):
     log = Signal(int, str)
@@ -16,6 +17,7 @@ class YtdlpRunner(QThread):
         self.allow_playlist = allow_playlist
 
     def run(self):
+        self._ensure_bundled_deno()
         try:
             import yt_dlp
         except Exception as e:
@@ -32,6 +34,7 @@ class YtdlpRunner(QThread):
         opts["progress_hooks"] = [self._progress_hook]
         opts["quiet"] = True
         last_err = None
+        fallback_used = False
         for attempt in range(1, max_attempts + 1):
             try:
                 with yt_dlp.YoutubeDL(opts) as ydl:
@@ -46,6 +49,21 @@ class YtdlpRunner(QThread):
                 break
             except Exception:
                 last_err = traceback.format_exc()
+                if (not fallback_used) and ("Requested format is not available" in last_err):
+                    output_format = getattr(self.settings, "output_format", "mp4")
+                    opts["format"] = self._fallback_format_selector(output_format)
+                    opts.pop("merge_output_format", None)
+                    opts.pop("format_sort", None)
+                    opts.pop("format_sort_force", None)
+                    fallback_used = True
+                    self.log.emit(self.item_id, "Fallback format: best")
+                    try:
+                        with yt_dlp.YoutubeDL(opts) as ydl:
+                            ydl.download(self.urls)
+                        last_err = None
+                        break
+                    except Exception:
+                        last_err = traceback.format_exc()
                 if attempt < max_attempts:
                     self.log.emit(self.item_id, f"Retrying download ({attempt}/{max_attempts})")
                     continue
@@ -82,12 +100,22 @@ class YtdlpRunner(QThread):
         outtmpl_default = getattr(s, "outtmpl_default", "")
         outtmpl_playlist = getattr(s, "outtmpl_playlist", "")
         outtmpl = outtmpl_playlist if self.allow_playlist else outtmpl_default
+        output_format = getattr(s, "output_format", "mp4")
+        format_selector = getattr(s, "format_selector", "") or self._build_format_selector(output_format)
+        merge_output_format = getattr(s, "merge_output_format", "") or (
+            output_format if output_format in ("mp4", "mkv", "webm") else None
+        )
+        remote_components = getattr(s, "yt_remote_components", "")
+        if isinstance(remote_components, str):
+            remote_components = remote_components.strip()
+            remote_components = [remote_components] if remote_components else None
+
         opts = {
             "noplaylist": not self.allow_playlist,
             "paths": {"home": download_dir},
             "outtmpl": outtmpl,
-            "format": (getattr(s, "format_selector", None) or None),
-            "merge_output_format": (getattr(s, "merge_output_format", None) or None),
+            "format": format_selector or None,
+            "merge_output_format": merge_output_format,
             "concurrent_fragment_downloads": getattr(s, "concurrent_fragments", 4),
             "writesubtitles": getattr(s, "write_subs", False),
             "writeautomaticsub": getattr(s, "write_auto_subs", False),
@@ -114,7 +142,24 @@ class YtdlpRunner(QThread):
                     "lang": [getattr(s, "yt_lang", "")] if getattr(s, "yt_lang", "") else [],
                 }
             },
+            "remote_components": remote_components,
         }
+        if getattr(s, "prefer_largest_file", False):
+            opts["format_sort"] = ["filesize:best", "res:best", "fps:best", "br:best"]
+            opts["format_sort_force"] = True
+        po_token = getattr(s, "yt_po_token", "")
+        if po_token:
+            opts["extractor_args"]["youtube"]["po_token"] = [po_token]
+        if output_format in ("mp3", "m4a", "opus", "flac"):
+            aq = getattr(s, "audio_quality", "best")
+            aq_val = aq.replace("k", "") if isinstance(aq, str) else ""
+            pp = {
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": output_format,
+            }
+            if aq_val and aq_val.isdigit():
+                pp["preferredquality"] = aq_val
+            opts["postprocessors"] = [pp]
         if getattr(s, "yt_skip_age_restricted", False):
             opts["match_filter"] = "age_limit is None or age_limit < 18"
 
@@ -131,6 +176,31 @@ class YtdlpRunner(QThread):
 
         return {k: v for k, v in opts.items() if v is not None}
 
+    def _build_format_selector(self, output_format: str) -> str:
+        vq = getattr(self.settings, "video_quality", "best")
+        audio_only = output_format in ("mp3", "m4a", "opus", "flac") or vq == "audio_only"
+        if audio_only:
+            return "bestaudio/best"
+        def best_combo(limit: str = "") -> str:
+            return f"bestvideo{limit}+bestaudio/best{limit}/best"
+
+        if vq == "best":
+            return best_combo()
+        if isinstance(vq, str) and vq.endswith("p"):
+            try:
+                height = int(vq[:-1])
+            except Exception:
+                height = None
+            if height:
+                return best_combo(f"[height<={height}]")
+        return best_combo()
+
+    @staticmethod
+    def _fallback_format_selector(output_format: str) -> str:
+        if output_format in ("mp3", "m4a", "opus", "flac"):
+            return "bestaudio/best"
+        return "best"
+
     @staticmethod
     def _parse_headers(text: str):
         headers = {}
@@ -140,3 +210,19 @@ class YtdlpRunner(QThread):
             k, v = line.split(":", 1)
             headers[k.strip()] = v.strip()
         return headers
+
+    @staticmethod
+    def _ensure_bundled_deno():
+        candidates = []
+        if getattr(sys, "frozen", False):
+            base = getattr(sys, "_MEIPASS", "")
+            if base:
+                candidates.append(os.path.join(base, "deno.exe"))
+        candidates.append(os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), "deno.exe"))
+        for path in candidates:
+            if os.path.exists(path):
+                deno_dir = os.path.dirname(path)
+                current = os.environ.get("PATH", "")
+                if deno_dir not in current.split(os.pathsep):
+                    os.environ["PATH"] = deno_dir + os.pathsep + current
+                break

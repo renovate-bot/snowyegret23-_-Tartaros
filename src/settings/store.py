@@ -21,6 +21,7 @@ class AppSettings:
     audio_quality: str = "best"  # best, 320k, 256k, 192k, 128k, 96k
     concurrent_fragments: int = 4
     verify_download: bool = True  # 다운로드 후 검증
+    prefer_largest_file: bool = False  # 최대 파일 크기 우선 선택
 
     # 자막/메타데이터
     write_subs: bool = False
@@ -44,8 +45,10 @@ class AppSettings:
     concurrent_downloads: int = 3
 
     # YouTube 설정
-    yt_player_clients: str = "web,android"
+    yt_player_clients: str = "web"
     yt_lang: str = "ko"
+    yt_remote_components: str = "ejs:github"
+    yt_po_token: str = ""
 
     # SponsorBlock
     sponsorblock_enable: bool = False
@@ -118,7 +121,7 @@ class SettingsStore:
         bool_keys = {
             "write_subs", "write_auto_subs", "embed_subs", "write_thumbnail",
             "embed_thumbnail", "add_metadata", "use_cookies_from_browser",
-            "enable_age_restricted", "verify_download",
+            "enable_age_restricted", "verify_download", "prefer_largest_file",
             "sponsorblock_enable", "list_sort_desc", "clipboard_enabled"
         }
         for key in list(data.keys()):
@@ -146,6 +149,7 @@ class SettingsStore:
             "audio_quality": settings.audio_quality,
             "concurrent_fragments": str(settings.concurrent_fragments),
             "verify_download": str(settings.verify_download),
+            "prefer_largest_file": str(settings.prefer_largest_file),
         }
         cfg["subs_meta"] = {
             "write_subs": str(settings.write_subs),
@@ -171,6 +175,8 @@ class SettingsStore:
         cfg["youtube"] = {
             "yt_player_clients": settings.yt_player_clients,
             "yt_lang": settings.yt_lang,
+            "yt_remote_components": settings.yt_remote_components,
+            "yt_po_token": settings.yt_po_token,
         }
         cfg["sponsorblock"] = {
             "sponsorblock_enable": str(settings.sponsorblock_enable),
