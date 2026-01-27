@@ -27,11 +27,12 @@ jobs:
           pip install pyinstaller
 
       - name: Build executable
+        shell: bash
         run: |
-          pyinstaller --noconfirm --windowed --onefile --name Tartaros ^
-            --collect-all PySide6 ^
-            --collect-all yt_dlp ^
-            --collect-all requests ^
+          pyinstaller --noconfirm --windowed --onefile --name Tartaros \
+            --collect-all PySide6 \
+            --collect-all yt_dlp \
+            --collect-all requests \
             src/app.py
 
       - name: Upload artifact
