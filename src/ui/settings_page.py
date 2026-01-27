@@ -603,6 +603,7 @@ class SettingsPage(QWidget):
 
                 ffmpeg_zip = self._download_to(bundle_dir, "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip")
                 ffmpeg_path = self._extract_and_find(ffmpeg_zip, bundle_dir, "ffmpeg.exe")
+                self._extract_and_find(ffmpeg_zip, bundle_dir, "ffprobe.exe")
 
                 def apply_update():
                     if deno_path:

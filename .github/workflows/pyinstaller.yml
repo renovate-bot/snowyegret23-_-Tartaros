@@ -49,6 +49,8 @@ jobs:
             --collect-all requests \
             --add-binary "deno/deno.exe;." \
             --add-binary "ffmpeg/ffmpeg-*/bin/ffmpeg.exe;." \
+            --add-binary "ffmpeg/ffmpeg-*/bin/ffprobe.exe;." \
+            --add-binary "ffmpeg/ffmpeg-*/bin/ffplay.exe;." \
             src/app.py
 
       - name: Upload artifact
