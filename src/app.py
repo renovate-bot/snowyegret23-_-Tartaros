@@ -42,13 +42,11 @@ class MainWindow(QMainWindow):
             }
         """)
 
-        # 파일 메뉴
         file_menu = menubar.addMenu(tr("menu.file"))
         import_action = QAction(tr("menu.import_urls"), self)
         import_action.triggered.connect(self.downloads.import_urls)
         file_menu.addAction(import_action)
 
-        # 설정 메뉴
         settings_action = QAction(tr("menu.settings"), self)
         settings_action.triggered.connect(self.open_settings)
         menubar.addAction(settings_action)
@@ -118,13 +116,11 @@ def apply_style(app: QApplication):
     app.setFont(font)
 
     app.setStyleSheet("""
-        /* === 메인 배경 === */
         QMainWindow, QWidget {
             background: #1a1a2e;
             color: #eaeaea;
         }
 
-        /* === 입력 필드 === */
         QLineEdit, QTextEdit {
             background: #0f1524;
             border: 1px solid #2a3a5a;
@@ -137,7 +133,6 @@ def apply_style(app: QApplication):
             border: 1px solid #e94560;
         }
 
-        /* === 콤보박스 === */
         QComboBox {
             background: #0f1524;
             border: 1px solid #2a3a5a;
@@ -158,7 +153,6 @@ def apply_style(app: QApplication):
             selection-background-color: #e94560;
         }
 
-        /* === 버튼 === */
         QPushButton {
             background: #2a3a5a;
             border: none;
@@ -177,7 +171,6 @@ def apply_style(app: QApplication):
             color: #555;
         }
 
-        /* === 다운로드 버튼 (강조) === */
         QPushButton#downloadButton {
             background: #e94560;
             font-size: 14px;
@@ -187,7 +180,6 @@ def apply_style(app: QApplication):
             background: #ff5a75;
         }
 
-        /* === 체크박스 === */
         QCheckBox {
             spacing: 8px;
             color: #eaeaea;
@@ -204,7 +196,6 @@ def apply_style(app: QApplication):
             border: 1px solid #e94560;
         }
 
-        /* === 그룹박스 === */
         QGroupBox {
             border: 1px solid #2a3a5a;
             border-radius: 8px;
@@ -218,7 +209,6 @@ def apply_style(app: QApplication):
             color: #e94560;
         }
 
-        /* === 리스트 위젯 === */
         QListWidget {
             background: transparent;
             border: none;
@@ -237,13 +227,11 @@ def apply_style(app: QApplication):
             color: #fff;
         }
 
-        /* === 스크롤 영역 === */
         QScrollArea {
             border: none;
             background: transparent;
         }
 
-        /* === 스크롤바 === */
         QScrollBar:vertical {
             background: transparent;
             width: 8px;
@@ -276,7 +264,6 @@ def apply_style(app: QApplication):
             width: 0;
         }
 
-        /* === 다운로드 아이템 === */
         QFrame#downloadItem {
             background: #0f1524;
             border: 1px solid #2a3a5a;
@@ -286,7 +273,6 @@ def apply_style(app: QApplication):
             border: 1px solid #e94560;
         }
 
-        /* === 다운로드 아이템 내부 === */
         QFrame#downloadItem QLabel {
             background: transparent;
         }
@@ -305,7 +291,6 @@ def apply_style(app: QApplication):
             background: transparent;
         }
 
-        /* === 에러 버튼 === */
         QPushButton#errorButton {
             color: #ff6b6b;
             background: transparent;
@@ -316,7 +301,6 @@ def apply_style(app: QApplication):
             color: #ff8787;
         }
 
-        /* === 진행 바 === */
         QProgressBar {
             background: #1a2a3a;
             border: none;
@@ -328,7 +312,6 @@ def apply_style(app: QApplication):
             border-radius: 2px;
         }
 
-        /* === 스핀박스 === */
         QSpinBox {
             background: #0f1524;
             border: 1px solid #2a3a5a;
@@ -348,7 +331,6 @@ def apply_style(app: QApplication):
             background: #3a4a6a;
         }
 
-        /* === 툴팁 === */
         QToolTip {
             background: #0f1524;
             color: #eaeaea;
@@ -356,7 +338,6 @@ def apply_style(app: QApplication):
             padding: 4px 8px;
         }
 
-        /* === 메뉴 === */
         QMenu {
             background: #0f1524;
             border: 1px solid #2a3a5a;

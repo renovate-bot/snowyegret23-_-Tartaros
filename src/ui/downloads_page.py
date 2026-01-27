@@ -2,7 +2,6 @@ import csv
 import os
 import re
 from datetime import datetime
-import re as _re
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
@@ -53,7 +52,6 @@ class ErrorDialog(QDialog):
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(12)
 
-        # 헤더
         header = QLabel(tr("downloads.error_header"))
         header.setStyleSheet("font-size: 14px; font-weight: bold; color: #ff6b6b;")
         layout.addWidget(header)
@@ -91,7 +89,6 @@ class ErrorDialog(QDialog):
 
 
 class DownloadItem(QFrame):
-    # 상태 아이콘 매핑
     STATUS_ICONS = {
         "queued": "⏳",
         "running": "⬇",
@@ -109,21 +106,17 @@ class DownloadItem(QFrame):
         main_layout.setContentsMargins(10, 8, 10, 8)
         main_layout.setSpacing(6)
 
-        # 상단 영역 (썸네일 + 정보)
         top_layout = QHBoxLayout()
         top_layout.setSpacing(10)
 
-        # 썸네일
         self.thumb = QLabel()
         self.thumb.setFixedSize(72, 40)
         self.thumb.setStyleSheet("background: #1a2a3a; border-radius: 4px;")
         top_layout.addWidget(self.thumb)
 
-        # 텍스트 정보
         text_box = QVBoxLayout()
         text_box.setSpacing(4)
 
-        # 제목 행 (상태 아이콘 + 제목)
         title_row = QHBoxLayout()
         title_row.setSpacing(8)
 
@@ -146,7 +139,6 @@ class DownloadItem(QFrame):
 
         top_layout.addLayout(text_box, 1)
 
-        # 에러 버튼
         self.err_btn = QPushButton(tr("downloads.error_button"))
         self.err_btn.setObjectName("errorButton")
         self.err_btn.setFlat(True)
@@ -156,7 +148,6 @@ class DownloadItem(QFrame):
 
         main_layout.addLayout(top_layout)
 
-        # 진행률 바
         self.progress_bar = QProgressBar()
         self.progress_bar.setTextVisible(False)
         self.progress_bar.setFixedHeight(4)
@@ -178,7 +169,6 @@ class DownloadItem(QFrame):
         self._state = state
         self.status_icon.setText(self.STATUS_ICONS.get(state, "⏳"))
         self._update_status_icon_color()
-        # 진행 중일 때만 진행률 바 표시
         self.progress_bar.setVisible(state == "running")
         if state == "done":
             self.progress_bar.setValue(100)
@@ -255,7 +245,6 @@ class DownloadsPage(QWidget):
         self.list_area.setWidget(self.content)
         root.addWidget(self.list_area, 1)
 
-        # 하단 입력 영역
         bottom = QHBoxLayout()
         bottom.setContentsMargins(0, 8, 0, 0)
         bottom.setSpacing(8)
@@ -369,6 +358,36 @@ class DownloadsPage(QWidget):
         except Exception:
             return False
 
+    def extract_video_id(self, url: str) -> str:
+        try:
+            p = urlparse(url)
+            host = p.netloc.lower()
+            qs = parse_qs(p.query)
+            if "youtu.be" in host:
+                return p.path.lstrip("/").split("/")[0]
+            if "youtube.com" in host and p.path == "/watch":
+                return qs.get("v", [""])[0]
+            if "youtube.com" in host and p.path.startswith("/shorts/"):
+                return p.path.replace("/shorts/", "").split("/")[0]
+            if "youtube.com" in host and p.path.startswith("/embed/"):
+                return p.path.replace("/embed/", "").split("/")[0]
+            if "youtube.com" in host and p.path == "/playlist":
+                return f"playlist:{qs.get('list', [''])[0]}"
+        except Exception:
+            pass
+        return ""
+
+    def _get_active_video_ids(self) -> set:
+        ids = set()
+        for item in self._items.values():
+            state = item.get("state", "")
+            if state in ("queued", "running", "done"):
+                for url in item.get("urls", []):
+                    vid = self.extract_video_id(url)
+                    if vid:
+                        ids.add(vid)
+        return ids
+
     def start_download(self):
         text = self.url_input.text().strip()
         if not text:
@@ -394,11 +413,27 @@ class DownloadsPage(QWidget):
         self.run_ytdlp(urls)
 
     def run_ytdlp(self, urls):
+        active_ids = self._get_active_video_ids()
+        filtered_urls = []
+        skipped = 0
+        for url in urls:
+            vid = self.extract_video_id(url)
+            if vid and vid in active_ids:
+                skipped += 1
+                print(f"Skipped (duplicate): {url}")
+                continue
+            filtered_urls.append(url)
+
+        if not filtered_urls:
+            if skipped > 0:
+                print(f"All {skipped} URL(s) skipped (already downloaded or in progress)")
+            return
+
         settings = SettingsStore.load()
-        title = urls[0] if len(urls) == 1 else tr("downloads.batch").format(count=len(urls))
-        item_id = self.add_item(title, tr("downloads.status.queued"), "", urls=urls)
-        allow_playlist = any(self.is_playlist_url(u) for u in urls)
-        worker = YtdlpRunner(item_id, urls, settings, allow_playlist)
+        title = filtered_urls[0] if len(filtered_urls) == 1 else tr("downloads.batch").format(count=len(filtered_urls))
+        item_id = self.add_item(title, tr("downloads.status.queued"), "", urls=filtered_urls)
+        allow_playlist = any(self.is_playlist_url(u) for u in filtered_urls)
+        worker = YtdlpRunner(item_id, filtered_urls, settings, allow_playlist)
         worker.log.connect(self.on_log)
         worker.error.connect(self.on_error)
         worker.progress.connect(self.on_progress)
@@ -411,6 +446,8 @@ class DownloadsPage(QWidget):
         print(msg)
 
     def on_error(self, item_id: int, msg: str):
+        self._workers.pop(item_id, None)
+
         item = self._items.get(item_id)
         if not item:
             return
@@ -425,6 +462,8 @@ class DownloadsPage(QWidget):
         self._save_list_csv()
 
     def on_done(self, item_id: int):
+        self._workers.pop(item_id, None)
+
         item = self._items.get(item_id)
         if not item:
             return
@@ -450,7 +489,7 @@ class DownloadsPage(QWidget):
         item = self._items.get(item_id)
         if not item:
             return
-        ansi = _re.compile(r"\x1b\[[0-9;]*m")
+        ansi = re.compile(r"\x1b\[[0-9;]*m")
         status = ansi.sub("", status or "")
         eta = ansi.sub("", eta or "")
         speed = ansi.sub("", speed or "")
@@ -508,9 +547,11 @@ class DownloadsPage(QWidget):
             return
         urls = [self.normalize_youtube_url(u) for u in self.parse_urls(text)]
         for url in urls:
-            if url in self._seen_clipboard:
+            vid = self.extract_video_id(url)
+            if vid and vid in self._seen_clipboard:
                 continue
-            self._seen_clipboard.add(url)
+            if vid:
+                self._seen_clipboard.add(vid)
             self.run_ytdlp([url])
 
     def _show_menu(self, item_id: int, global_pos):
@@ -595,6 +636,11 @@ class DownloadsPage(QWidget):
         item = self._items.get(item_id)
         if not item or item.get("locked"):
             return
+        worker = self._workers.get(item_id)
+        if worker is not None:
+            worker.cancel()
+            worker.wait(2000)
+            self._workers.pop(item_id, None)
         widget = item.get("widget")
         if widget:
             widget.setParent(None)
@@ -751,7 +797,6 @@ class DownloadsPage(QWidget):
         return os.path.join(self._get_download_dir(), ".thumbnails")
 
     def _pick_thumbnail(self, info: dict):
-        # Playlist: use first entry thumbnail
         if info.get("_type") in ("playlist", "multi_video") or isinstance(info.get("entries"), list):
             entries = info.get("entries") or []
             for ent in entries:

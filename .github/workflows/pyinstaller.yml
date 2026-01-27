@@ -33,6 +33,13 @@ jobs:
           Invoke-WebRequest -Uri $url -OutFile deno.zip
           Expand-Archive -Path deno.zip -DestinationPath deno
 
+      - name: Download FFmpeg
+        shell: pwsh
+        run: |
+          $url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
+          Invoke-WebRequest -Uri $url -OutFile ffmpeg.zip
+          Expand-Archive -Path ffmpeg.zip -DestinationPath ffmpeg
+
       - name: Build executable
         shell: bash
         run: |
@@ -41,6 +48,7 @@ jobs:
             --collect-all yt_dlp \
             --collect-all requests \
             --add-binary "deno/deno.exe;." \
+            --add-binary "ffmpeg/ffmpeg-*/bin/ffmpeg.exe;." \
             src/app.py
 
       - name: Upload artifact

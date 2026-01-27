@@ -13,49 +13,45 @@ class AppSettings:
     language: str = "English"
     download_dir: str = "ytdl"
 
-    # 출력 설정
     outtmpl_default: str = "[%(uploader)s] %(title)s (%(id)s).%(ext)s"
     outtmpl_playlist: str = "[Playlist] %(playlist_title)s/%(playlist_index)03d. %(title)s (%(id)s).%(ext)s"
-    output_format: str = "mp4"  # mp4, mkv, webm, mp3, m4a, opus, flac
-    video_quality: str = "best"  # best, 2160p, 1440p, 1080p, 720p, 480p, 360p, audio_only
-    audio_quality: str = "best"  # best, 320k, 256k, 192k, 128k, 96k
+    output_format: str = "mp4"
+    video_quality: str = "best"
+    audio_quality: str = "best"
     concurrent_fragments: int = 4
-    verify_download: bool = True  # 다운로드 후 검증
-    prefer_largest_file: bool = False  # 최대 파일 크기 우선 선택
+    verify_download: bool = True
+    prefer_largest_file: bool = False
 
-    # 자막/메타데이터
     write_subs: bool = False
     write_auto_subs: bool = False
     sub_langs: str = "ko,en"
     embed_subs: bool = False
     write_thumbnail: bool = False
     embed_thumbnail: bool = True
+    embed_chapters: bool = True
     add_metadata: bool = True
 
-    # 인증
     cookies_from_browser: str = "chrome"
     cookies_file: str = ""
     cookies_text: str = ""
     use_cookies_from_browser: bool = False
-    enable_age_restricted: bool = False  # 성인 콘텐츠 다운로드 허용
+    enable_age_restricted: bool = False
 
-    # 네트워크
     proxy: str = ""
     retries: int = 10
     concurrent_downloads: int = 3
 
-    # YouTube 설정
-    yt_player_clients: str = "web"
+    yt_player_clients: str = ""
     yt_lang: str = "ko"
     yt_remote_components: str = "ejs:github"
     yt_po_token: str = ""
+    deno_path: str = ""
+    ffmpeg_path: str = ""
 
-    # SponsorBlock
     sponsorblock_enable: bool = False
     sponsorblock_remove: str = "sponsor,intro,outro"
     sponsorblock_mark: str = ""
 
-    # UI 상태
     window_x: int = 100
     window_y: int = 100
     window_w: int = 900
@@ -112,7 +108,6 @@ class SettingsStore:
         for section in cfg.sections():
             for key, value in cfg.items(section):
                 data[key] = value
-        # type coercion
         int_keys = {
             "concurrent_fragments", "retries", "concurrent_downloads",
             "window_x", "window_y", "window_w", "window_h",
@@ -120,7 +115,7 @@ class SettingsStore:
         }
         bool_keys = {
             "write_subs", "write_auto_subs", "embed_subs", "write_thumbnail",
-            "embed_thumbnail", "add_metadata", "use_cookies_from_browser",
+            "embed_thumbnail", "embed_chapters", "add_metadata", "use_cookies_from_browser",
             "enable_age_restricted", "verify_download", "prefer_largest_file",
             "sponsorblock_enable", "list_sort_desc", "clipboard_enabled"
         }
@@ -158,6 +153,7 @@ class SettingsStore:
             "embed_subs": str(settings.embed_subs),
             "write_thumbnail": str(settings.write_thumbnail),
             "embed_thumbnail": str(settings.embed_thumbnail),
+            "embed_chapters": str(settings.embed_chapters),
             "add_metadata": str(settings.add_metadata),
         }
         cfg["auth"] = {
@@ -177,6 +173,8 @@ class SettingsStore:
             "yt_lang": settings.yt_lang,
             "yt_remote_components": settings.yt_remote_components,
             "yt_po_token": settings.yt_po_token,
+            "deno_path": settings.deno_path,
+            "ffmpeg_path": settings.ffmpeg_path,
         }
         cfg["sponsorblock"] = {
             "sponsorblock_enable": str(settings.sponsorblock_enable),

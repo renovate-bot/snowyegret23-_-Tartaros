@@ -3,26 +3,31 @@ from PySide6.QtWidgets import (
     QLabel, QGroupBox, QFormLayout, QComboBox, QLineEdit, QSpinBox, QCheckBox,
     QPushButton, QScrollArea, QFrame
 )
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QKeySequence, QShortcut
+from PySide6.QtCore import Qt, QTimer, QUrl
+from PySide6.QtGui import QKeySequence, QShortcut, QDesktopServices
 import shutil
+import os
+import sys
+import zipfile
+import urllib.request
+import threading
+import tempfile
 
 from settings.store import SettingsStore
-from ui.widgets import path_picker, labeled_textarea, labeled_edit
+from ui.widgets import path_picker, labeled_textarea, labeled_edit, file_picker
 from ui.i18n import tr, i18n
 
 
 class SettingsPage(QWidget):
-    # 메뉴 아이콘 매핑
     NAV_ITEMS = [
         ("⚙", "settings.nav.general"),
         ("📁", "settings.nav.download"),
         ("📝", "settings.nav.subs_meta"),
         ("🔑", "settings.nav.auth"),
         ("⏭", "settings.nav.sponsorblock"),
+        ("🧰", "settings.nav.bundle"),
     ]
 
-    # 브라우저 옵션
     BROWSER_OPTIONS = [
         ("chrome", "Chrome"),
         ("firefox", "Firefox"),
@@ -39,6 +44,7 @@ class SettingsPage(QWidget):
     ]
 
     PLAYER_CLIENT_OPTIONS = [
+        ("", "settings.option.player_clients.auto"),
         ("web", "settings.option.player_clients.web"),
         ("web,android", "settings.option.player_clients.web_android"),
     ]
@@ -59,7 +65,6 @@ class SettingsPage(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        # 좌측 네비게이션 패널
         nav_panel = QWidget()
         nav_panel.setFixedWidth(150)
         nav_panel.setStyleSheet("""
@@ -79,7 +84,6 @@ class SettingsPage(QWidget):
         self.nav.setCurrentRow(0)
         nav_layout.addWidget(self.nav, 1)
 
-        # 저장 버튼
         save_btn = QPushButton(tr("settings.save"))
         save_btn.setStyleSheet("""
             QPushButton {
@@ -97,7 +101,6 @@ class SettingsPage(QWidget):
 
         root.addWidget(nav_panel)
 
-        # 우측 컨텐츠 영역
         content_panel = QWidget()
         content_panel.setStyleSheet("background: #1a1a2e;")
         content_layout = QVBoxLayout(content_panel)
@@ -111,6 +114,7 @@ class SettingsPage(QWidget):
         self.stack.addWidget(self._page_subs_meta())
         self.stack.addWidget(self._page_auth())
         self.stack.addWidget(self._page_sponsorblock())
+        self.stack.addWidget(self._page_bundle())
 
         root.addWidget(content_panel, 1)
 
@@ -169,7 +173,6 @@ class SettingsPage(QWidget):
         return lbl
 
     def _combo_row(self, label: str, options: list, current_value: str):
-        """콤보박스 행 생성"""
         row = QWidget()
         layout = QHBoxLayout(row)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -191,7 +194,6 @@ class SettingsPage(QWidget):
         return row, combo
 
     def _spin_row(self, label: str, value: int, min_val: int, max_val: int):
-        """스핀박스 행 생성"""
         row = QWidget()
         layout = QHBoxLayout(row)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -222,22 +224,18 @@ class SettingsPage(QWidget):
 
         layout.addWidget(self._section_header(tr("settings.section.general")))
 
-        # 저장 폴더
         path_row, self.download_dir = path_picker(tr("settings.label.download_dir"), "ytdl")
         self.download_dir.setText(self.settings.download_dir)
         layout.addWidget(path_row)
 
-        # 파일명 템플릿
         out_row, self.out_default = labeled_edit(tr("settings.label.outtmpl_default"), "[%(uploader)s] %(title)s (%(id)s).%(ext)s")
         self.out_default.setText(self.settings.outtmpl_default)
         layout.addWidget(out_row)
 
-        # 플레이리스트 템플릿
         pl_row, self.out_playlist = labeled_edit(tr("settings.label.outtmpl_playlist"), "[Playlist] %(playlist_title)s/%(playlist_index)03d. %(title)s.%(ext)s")
         self.out_playlist.setText(self.settings.outtmpl_playlist)
         layout.addWidget(pl_row)
 
-        # 도움말
         help_lbl = QLabel(tr("settings.help.templates"))
         help_lbl.setStyleSheet("color: #6b7280; font-size: 10px;")
         layout.addWidget(help_lbl)
@@ -252,33 +250,26 @@ class SettingsPage(QWidget):
 
         layout.addWidget(self._section_header(tr("settings.section.download")))
 
-        # 출력 포맷
         fmt_row, self.output_format = self._combo_row(tr("settings.label.output_format"), self._format_options(), self.settings.output_format)
         layout.addWidget(fmt_row)
 
-        # 화질 선택
         vq_row, self.video_quality = self._combo_row(tr("settings.label.video_quality"), self._video_quality_options(), self.settings.video_quality)
         layout.addWidget(vq_row)
 
-        # 음질 선택
         aq_row, self.audio_quality = self._combo_row(tr("settings.label.audio_quality"), self._audio_quality_options(), self.settings.audio_quality)
         layout.addWidget(aq_row)
 
-        # 동시 다운로드 조각
         frag_row, self.fragments = self._spin_row(tr("settings.label.concurrent_fragments"), self.settings.concurrent_fragments, 1, 16)
         layout.addWidget(frag_row)
 
-        # 재시도 횟수
         retry_row, self.retries = self._spin_row(tr("settings.label.retries"), self.settings.retries, 1, 30)
         layout.addWidget(retry_row)
 
-        # 다운로드 후 검증
         self.verify_download = QCheckBox(tr("settings.option.verify_download"))
         self.verify_download.setChecked(self.settings.verify_download)
         self.verify_download.setToolTip(tr("settings.tooltip.verify_download"))
         layout.addWidget(self.verify_download)
 
-        # 최대 파일 크기 우선
         self.prefer_largest_file = QCheckBox(tr("settings.option.prefer_largest_file"))
         self.prefer_largest_file.setChecked(self.settings.prefer_largest_file)
         layout.addWidget(self.prefer_largest_file)
@@ -315,6 +306,10 @@ class SettingsPage(QWidget):
         self.embed_thumbnail = QCheckBox(tr("settings.option.embed_thumbnail"))
         self.embed_thumbnail.setChecked(self.settings.embed_thumbnail)
         layout.addWidget(self.embed_thumbnail)
+
+        self.embed_chapters = QCheckBox(tr("settings.option.embed_chapters"))
+        self.embed_chapters.setChecked(self.settings.embed_chapters)
+        layout.addWidget(self.embed_chapters)
 
         self.write_thumbnail = QCheckBox(tr("settings.option.write_thumbnail"))
         self.write_thumbnail.setChecked(self.settings.write_thumbnail)
@@ -359,6 +354,11 @@ class SettingsPage(QWidget):
         self.deno_warn = QLabel(tr("settings.warning.deno_missing"))
         self.deno_warn.setStyleSheet("color: #ffb703; font-size: 10px; padding: 2px 0;")
         layout.addWidget(self.deno_warn)
+
+        self.ffmpeg_warn = QLabel(tr("settings.warning.ffmpeg_missing"))
+        self.ffmpeg_warn.setStyleSheet("color: #ffb703; font-size: 10px; padding: 2px 0;")
+        layout.addWidget(self.ffmpeg_warn)
+
         self._update_deno_warning()
         self.yt_remote_components.currentIndexChanged.connect(self._update_deno_warning)
 
@@ -431,17 +431,65 @@ class SettingsPage(QWidget):
         layout.addStretch(1)
         return self._wrap_scroll(page)
 
+    def _page_bundle(self):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setSpacing(12)
+
+        layout.addWidget(self._section_header(tr("settings.section.bundle")))
+
+        deno_row, self.bundle_deno = labeled_edit(tr("settings.label.bundle.deno"), "")
+        self.bundle_deno.setReadOnly(True)
+        layout.addWidget(deno_row)
+
+        deno_path_row, self.bundle_deno_path = labeled_edit(tr("settings.label.bundle.path"), "")
+        self.bundle_deno_path.setReadOnly(True)
+        layout.addWidget(deno_path_row)
+
+        deno_override_row, self.bundle_deno_override = file_picker(tr("settings.label.bundle.override"), "")
+        self.bundle_deno_override.setText(self.settings.deno_path)
+        layout.addWidget(deno_override_row)
+
+        ffmpeg_row, self.bundle_ffmpeg = labeled_edit(tr("settings.label.bundle.ffmpeg"), "")
+        self.bundle_ffmpeg.setReadOnly(True)
+        layout.addWidget(ffmpeg_row)
+
+        ffmpeg_path_row, self.bundle_ffmpeg_path = labeled_edit(tr("settings.label.bundle.path"), "")
+        self.bundle_ffmpeg_path.setReadOnly(True)
+        layout.addWidget(ffmpeg_path_row)
+
+        ffmpeg_override_row, self.bundle_ffmpeg_override = file_picker(tr("settings.label.bundle.override"), "")
+        self.bundle_ffmpeg_override.setText(self.settings.ffmpeg_path)
+        layout.addWidget(ffmpeg_override_row)
+
+        btns = QHBoxLayout()
+        btns.setSpacing(8)
+        refresh_btn = QPushButton(tr("settings.button.bundle.refresh"))
+        refresh_btn.clicked.connect(self._refresh_bundle_status)
+        download_btn = QPushButton(tr("settings.button.bundle.download"))
+        download_btn.clicked.connect(self._open_bundle_downloads)
+        btns.addStretch(1)
+        btns.addWidget(refresh_btn)
+        btns.addWidget(download_btn)
+        layout.addLayout(btns)
+
+        help_lbl = QLabel(tr("settings.help.bundle.download"))
+        help_lbl.setStyleSheet("color: #6b7280; font-size: 10px; padding: 2px 0;")
+        layout.addWidget(help_lbl)
+
+        self._refresh_bundle_status()
+        layout.addStretch(1)
+        return self._wrap_scroll(page)
+
     def save(self, close_window: bool = True):
         s = self.settings
         prev_language = s.language
 
-        # 일반
         s.language = self.language.currentData()
         s.download_dir = self.download_dir.text().strip()
         s.outtmpl_default = self.out_default.text().strip()
         s.outtmpl_playlist = self.out_playlist.text().strip()
 
-        # 다운로드
         s.output_format = self.output_format.currentData()
         s.video_quality = self.video_quality.currentData()
         s.audio_quality = self.audio_quality.currentData()
@@ -450,16 +498,15 @@ class SettingsPage(QWidget):
         s.verify_download = self.verify_download.isChecked()
         s.prefer_largest_file = self.prefer_largest_file.isChecked()
 
-        # 자막/메타
         s.write_subs = self.write_subs.isChecked()
         s.write_auto_subs = self.write_auto_subs.isChecked()
         s.sub_langs = self.sub_langs.text().strip()
         s.embed_subs = self.embed_subs.isChecked()
         s.write_thumbnail = self.write_thumbnail.isChecked()
         s.embed_thumbnail = self.embed_thumbnail.isChecked()
+        s.embed_chapters = self.embed_chapters.isChecked()
         s.add_metadata = self.add_metadata.isChecked()
 
-        # 인증
         s.use_cookies_from_browser = self.use_cookies_from_browser.isChecked()
         s.cookies_from_browser = self.cookies_from_browser.currentData()
         s.cookies_text = self.cookies_text.toPlainText().strip()
@@ -468,8 +515,9 @@ class SettingsPage(QWidget):
         s.yt_remote_components = self.yt_remote_components.currentData()
         s.yt_player_clients = self.yt_player_clients.currentData()
         s.yt_po_token = self.yt_po_token.text().strip()
+        s.deno_path = self.bundle_deno_override.text().strip()
+        s.ffmpeg_path = self.bundle_ffmpeg_override.text().strip()
 
-        # SponsorBlock
         s.sponsorblock_enable = self.sb_enable.isChecked()
         s.sponsorblock_remove = self.sb_remove.text().strip()
         s.sponsorblock_mark = self.sb_mark.text().strip()
@@ -484,13 +532,175 @@ class SettingsPage(QWidget):
 
     def _update_deno_warning(self):
         enabled = bool(self.yt_remote_components.currentData())
-        has_deno = shutil.which("deno") is not None
-        if not has_deno:
-            import sys, os
-            if getattr(sys, "frozen", False):
-                base = getattr(sys, "_MEIPASS", "")
-                if base and os.path.exists(os.path.join(base, "deno.exe")):
-                    has_deno = True
-            if not has_deno and os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)), "deno.exe")):
-                has_deno = True
+        has_deno = bool(self._detect_deno_path())
         self.deno_warn.setVisible(enabled and not has_deno)
+        self._update_ffmpeg_warning()
+
+    def _update_ffmpeg_warning(self):
+        has_ffmpeg = bool(self._detect_ffmpeg_path())
+        self.ffmpeg_warn.setVisible(not has_ffmpeg)
+
+    def _refresh_bundle_status(self):
+        def status(has_tool: bool) -> str:
+            return tr("settings.value.bundle.present") if has_tool else tr("settings.value.bundle.missing")
+
+        deno_path = self._detect_deno_path()
+        ffmpeg_path = self._detect_ffmpeg_path()
+        has_deno = bool(deno_path)
+        has_ffmpeg = bool(ffmpeg_path)
+
+        if hasattr(self, "bundle_deno"):
+            self.bundle_deno.setText(status(has_deno))
+        if hasattr(self, "bundle_ffmpeg"):
+            self.bundle_ffmpeg.setText(status(has_ffmpeg))
+        if hasattr(self, "bundle_deno_path"):
+            self.bundle_deno_path.setText(deno_path or "")
+        if hasattr(self, "bundle_ffmpeg_path"):
+            self.bundle_ffmpeg_path.setText(ffmpeg_path or "")
+        if hasattr(self, "bundle_deno_override") and deno_path:
+            self.bundle_deno_override.setText(deno_path)
+        if hasattr(self, "bundle_ffmpeg_override") and ffmpeg_path:
+            self.bundle_ffmpeg_override.setText(ffmpeg_path)
+
+        changed = False
+        if deno_path and self.settings.deno_path != deno_path:
+            self.settings.deno_path = deno_path
+            changed = True
+        if ffmpeg_path and self.settings.ffmpeg_path != ffmpeg_path:
+            self.settings.ffmpeg_path = ffmpeg_path
+            changed = True
+        if changed:
+            SettingsStore.save(self.settings)
+            self._update_deno_warning()
+
+    def _open_bundle_downloads(self):
+        self._start_bundle_download()
+
+    def _start_bundle_watch(self):
+        if not hasattr(self, "_bundle_timer"):
+            self._bundle_timer = QTimer(self)
+            self._bundle_timer.timeout.connect(self._on_bundle_watch_tick)
+        self._bundle_watch_ticks = 0
+        self._bundle_timer.start(2000)
+
+    def _on_bundle_watch_tick(self):
+        self._bundle_watch_ticks += 1
+        self._refresh_bundle_status()
+        if self._bundle_watch_ticks >= 30:
+            self._bundle_timer.stop()
+
+    def _start_bundle_download(self):
+        if getattr(self, "_bundle_downloading", False):
+            return
+        self._bundle_downloading = True
+
+        def worker():
+            try:
+                bundle_dir = self._bundle_dir()
+                os.makedirs(bundle_dir, exist_ok=True)
+                deno_zip = self._download_to(bundle_dir, "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip")
+                deno_path = self._extract_and_find(deno_zip, bundle_dir, "deno.exe")
+
+                ffmpeg_zip = self._download_to(bundle_dir, "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip")
+                ffmpeg_path = self._extract_and_find(ffmpeg_zip, bundle_dir, "ffmpeg.exe")
+
+                def apply_update():
+                    if deno_path:
+                        self.bundle_deno_override.setText(deno_path)
+                    if ffmpeg_path:
+                        self.bundle_ffmpeg_override.setText(ffmpeg_path)
+                    self.save(close_window=False)
+                    self._refresh_bundle_status()
+
+                QTimer.singleShot(0, apply_update)
+            finally:
+                self._bundle_downloading = False
+
+        threading.Thread(target=worker, daemon=True).start()
+        self._start_bundle_watch()
+
+    def _bundle_dir(self) -> str:
+        if getattr(sys, "frozen", False):
+            return os.path.join(os.path.dirname(sys.executable), "bundle")
+        base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        return os.path.join(base, "bundle")
+
+    def _download_to(self, dest_dir: str, url: str) -> str:
+        fd, tmp_path = tempfile.mkstemp(suffix=".zip", dir=dest_dir)
+        os.close(fd)
+        urllib.request.urlretrieve(url, tmp_path)
+        return tmp_path
+
+    def _extract_and_find(self, zip_path: str, dest_dir: str, filename: str) -> str:
+        try:
+            with zipfile.ZipFile(zip_path, "r") as zf:
+                zf.extractall(dest_dir)
+        except Exception:
+            return ""
+        for root, _dirs, files in os.walk(dest_dir):
+            if filename in files:
+                return os.path.join(root, filename)
+        return ""
+
+    def _detect_deno_path(self) -> str:
+        override = self.settings.deno_path.strip()
+        if override and os.path.exists(override):
+            return override
+        found = self._find_in_bundle_or_meipass("deno.exe")
+        if found:
+            return found
+        path = shutil.which("deno")
+        if path and "WinGet\\Links" not in path:
+            return path
+        return self._scan_winget_packages("deno.exe")
+
+    def _detect_ffmpeg_path(self) -> str:
+        override = self.settings.ffmpeg_path.strip()
+        if override and os.path.exists(override):
+            return override
+        found = self._find_in_bundle_or_meipass("ffmpeg.exe")
+        if found:
+            return found
+        path = shutil.which("ffmpeg")
+        if path and "WinGet\\Links" not in path:
+            return path
+        candidates = [
+            os.path.join(os.environ.get("ProgramData", "C:\\ProgramData"), "chocolatey", "lib"),
+            os.path.join(os.environ.get("ProgramFiles", "C:\\Program Files"), "ffmpeg"),
+            os.path.join(os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)"), "ffmpeg"),
+        ]
+        for base in candidates:
+            for root, _dirs, files in os.walk(base):
+                if "ffmpeg.exe" in files:
+                    return os.path.join(root, "ffmpeg.exe")
+        return self._scan_winget_packages("ffmpeg.exe")
+
+    def _find_in_bundle_or_meipass(self, exe_name: str) -> str:
+        if getattr(sys, "frozen", False):
+            base = getattr(sys, "_MEIPASS", "")
+            if base:
+                candidate = os.path.join(base, exe_name)
+                if os.path.exists(candidate):
+                    return candidate
+        bundle_candidate = os.path.join(self._bundle_dir(), exe_name)
+        if os.path.exists(bundle_candidate):
+            return bundle_candidate
+        bundle_dir = self._bundle_dir()
+        if os.path.exists(bundle_dir):
+            for root, _dirs, files in os.walk(bundle_dir):
+                if exe_name in files:
+                    return os.path.join(root, exe_name)
+        app_dir = os.path.dirname(os.path.abspath(__file__))
+        candidate = os.path.join(app_dir, exe_name)
+        if os.path.exists(candidate):
+            return candidate
+        return ""
+
+    def _scan_winget_packages(self, exe_name: str) -> str:
+        base = os.path.join(os.environ.get("LOCALAPPDATA", ""), "Microsoft", "WinGet", "Packages")
+        if not base or not os.path.exists(base):
+            return ""
+        for root, _dirs, files in os.walk(base):
+            if exe_name in files:
+                return os.path.join(root, exe_name)
+        return ""
