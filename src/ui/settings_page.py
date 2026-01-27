@@ -81,7 +81,7 @@ class SettingsPage(QWidget):
                 background: #ff5a75;
             }
         """)
-        save_btn.clicked.connect(self.save)
+        save_btn.clicked.connect(lambda: self.save())
         nav_layout.addWidget(save_btn)
 
         root.addWidget(nav_panel)
@@ -387,6 +387,7 @@ class SettingsPage(QWidget):
 
     def save(self, close_window: bool = True):
         s = self.settings
+        prev_language = s.language
 
         # 일반
         s.language = self.language.currentData()
@@ -428,4 +429,5 @@ class SettingsPage(QWidget):
             window = self.window()
             if window is not None:
                 window.close()
-        i18n.notify_language_changed()
+        if prev_language != s.language:
+            i18n.notify_language_changed()

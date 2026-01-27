@@ -97,7 +97,16 @@ class MainWindow(QMainWindow):
             self._settings_action.setText(tr("menu.settings"))
         if self.settings_window is not None:
             self.settings_window.setWindowTitle(tr("settings.title"))
-            self.settings_window.setCentralWidget(SettingsPage())
+            if self.settings_window.isVisible():
+                current_index = None
+                current = self.settings_window.centralWidget()
+                if isinstance(current, SettingsPage):
+                    current_index = current.nav.currentRow()
+                self.settings_window.setCentralWidget(SettingsPage())
+                if current_index is not None:
+                    new_page = self.settings_window.centralWidget()
+                    if isinstance(new_page, SettingsPage):
+                        new_page.nav.setCurrentRow(current_index)
         if self.downloads:
             self.downloads.retranslate()
 
