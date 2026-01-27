@@ -1,0 +1,78 @@
+name: Build (PyInstaller)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build executable
+        run: |
+          pyinstaller --noconfirm --windowed --onefile --name Tartaros ^
+            --collect-all PySide6 ^
+            --collect-all yt_dlp ^
+            --collect-all requests ^
+            src/app.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tartaros-windows
+          path: dist/Tartaros/**
+
+      - name: Read version
+        id: version
+        run: |
+          $v = (Select-String -Path src\core\version.py -Pattern '__version__').Line
+          if ($v -match '"([^"]+)"') { $ver = $matches[1] } else { exit 1 }
+          echo "version=$ver" >> $env:GITHUB_OUTPUT
+
+      - name: Fail if tag exists
+        run: |
+          $tag = "v${{ steps.version.outputs.version }}"
+          $exists = git tag -l $tag
+          if (-not [string]::IsNullOrWhiteSpace($exists)) {
+            Write-Host "Tag already exists: $tag"
+            exit 1
+          }
+
+      - name: Tag release
+        if: success()
+        run: |
+          $tag = "v${{ steps.version.outputs.version }}"
+          $exists = git tag -l $tag
+          if ([string]::IsNullOrWhiteSpace($exists)) {
+            git tag $tag
+            git push origin $tag
+          }
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        if: success()
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: v${{ steps.version.outputs.version }}
+          draft: false
+          prerelease: false
+          files: |
+            dist/Tartaros.exe

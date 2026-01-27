@@ -1,0 +1,3 @@
+PySide6>=6.5
+yt-dlp>=2024.10.07
+requests>=2.31.0
