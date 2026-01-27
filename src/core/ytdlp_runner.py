@@ -182,9 +182,7 @@ class YtdlpRunner(QThread):
         s = self.settings
         download_dir = getattr(s, "download_dir", "")
         if download_dir and not os.path.isabs(download_dir):
-            base = os.path.dirname(os.path.abspath(__file__))
-            base = os.path.dirname(base)
-            base = os.path.dirname(base)
+            base = self._base_dir()
             download_dir = os.path.join(base, download_dir)
         outtmpl_default = getattr(s, "outtmpl_default", "")
         outtmpl_playlist = getattr(s, "outtmpl_playlist", "")
@@ -293,6 +291,16 @@ class YtdlpRunner(QThread):
                     opts["postprocessors"] = opts["postprocessors"] + [modify_pp]
 
         return {k: v for k, v in opts.items() if v is not None}
+
+    @staticmethod
+    def _base_dir() -> str:
+        if getattr(sys, "frozen", False):
+            app_dir = os.path.dirname(sys.executable)
+        else:
+            app_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
+        if os.path.basename(app_dir).lower() == "src":
+            return os.path.dirname(app_dir)
+        return app_dir
 
     def _build_format_selector(self, output_format: str) -> str:
         vq = getattr(self.settings, "video_quality", "best")

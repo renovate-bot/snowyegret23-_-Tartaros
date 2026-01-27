@@ -557,16 +557,16 @@ class SettingsPage(QWidget):
             self.bundle_deno_path.setText(deno_path or "")
         if hasattr(self, "bundle_ffmpeg_path"):
             self.bundle_ffmpeg_path.setText(ffmpeg_path or "")
-        if hasattr(self, "bundle_deno_override") and deno_path:
+        if hasattr(self, "bundle_deno_override") and deno_path and not self._is_meipass_path(deno_path):
             self.bundle_deno_override.setText(deno_path)
-        if hasattr(self, "bundle_ffmpeg_override") and ffmpeg_path:
+        if hasattr(self, "bundle_ffmpeg_override") and ffmpeg_path and not self._is_meipass_path(ffmpeg_path):
             self.bundle_ffmpeg_override.setText(ffmpeg_path)
 
         changed = False
-        if deno_path and self.settings.deno_path != deno_path:
+        if deno_path and not self._is_meipass_path(deno_path) and self.settings.deno_path != deno_path:
             self.settings.deno_path = deno_path
             changed = True
-        if ffmpeg_path and self.settings.ffmpeg_path != ffmpeg_path:
+        if ffmpeg_path and not self._is_meipass_path(ffmpeg_path) and self.settings.ffmpeg_path != ffmpeg_path:
             self.settings.ffmpeg_path = ffmpeg_path
             changed = True
         if changed:
@@ -621,10 +621,18 @@ class SettingsPage(QWidget):
         self._start_bundle_watch()
 
     def _bundle_dir(self) -> str:
-        if getattr(sys, "frozen", False):
-            return os.path.join(os.path.dirname(sys.executable), "bundle")
-        base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        base = self._base_dir()
         return os.path.join(base, "bundle")
+
+    @staticmethod
+    def _base_dir() -> str:
+        if getattr(sys, "frozen", False):
+            app_dir = os.path.dirname(sys.executable)
+        else:
+            app_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
+        if os.path.basename(app_dir).lower() == "src":
+            return os.path.dirname(app_dir)
+        return app_dir
 
     def _download_to(self, dest_dir: str, url: str) -> str:
         fd, tmp_path = tempfile.mkstemp(suffix=".zip", dir=dest_dir)
@@ -705,3 +713,15 @@ class SettingsPage(QWidget):
             if exe_name in files:
                 return os.path.join(root, exe_name)
         return ""
+
+    @staticmethod
+    def _is_meipass_path(path: str) -> bool:
+        if not getattr(sys, "frozen", False):
+            return False
+        base = getattr(sys, "_MEIPASS", "")
+        if not base:
+            return False
+        try:
+            return os.path.commonpath([os.path.abspath(path), os.path.abspath(base)]) == os.path.abspath(base)
+        except Exception:
+            return False
